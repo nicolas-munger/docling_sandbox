@@ -44,10 +44,16 @@ class TableStructureModelV2(BaseTableStructureModel):
         accelerator_options: AcceleratorOptions,
         enable_remote_services: Literal[False] = False,
     ):
+        """Initialize TableStructureModelV2. (Model path, config etc.)"""
         self.options = options
         self.do_cell_matching = self.options.do_cell_matching
         self.enabled = enabled
-
+        print("self", self)
+        print("self.options", self.options)
+        print("self.do_cell_matching", self.do_cell_matching)
+        print("self.enabled", self.enabled)
+        print("artifacts_path", artifacts_path)
+        
         if self.enabled:
             # Determine model path
             if artifacts_path is None:
@@ -109,6 +115,7 @@ class TableStructureModelV2(BaseTableStructureModel):
     # FIXME: this method is here to test the quality and performance of the
     # bare TableFormer model on crops of tables in the ground-truth. In the near
     # future, we expect this method to be used in `predict_tables`!
+    # On the other hand predict_tables takes entire page as input.
     def _do_prediction_on_image_to_table(
         self,
         *,
@@ -310,7 +317,7 @@ class TableStructureModelV2(BaseTableStructureModel):
     ):
         assert page._backend is not None
         assert page.size is not None
-
+        print("Hey je suis dans la step de draw_tables_and_cells")
         image = page._backend.get_page_image(scale=self.scale)
 
         scale_x = image.width / page.size.width
@@ -357,8 +364,8 @@ class TableStructureModelV2(BaseTableStructureModel):
         pages: Sequence[Page],
     ) -> Sequence[TableStructurePrediction]:
         import torch
-
         pages = list(pages)
+        print("Je passe dans predict_tables")
         predictions: list[TableStructurePrediction] = []
 
         for page in pages:
@@ -376,6 +383,7 @@ class TableStructureModelV2(BaseTableStructureModel):
                 assert page.size is not None
 
                 table_prediction = TableStructurePrediction()
+                # print("table_prediction", table_prediction)
                 page.predictions.tablestructure = table_prediction
 
                 in_tables = [
@@ -400,6 +408,7 @@ class TableStructureModelV2(BaseTableStructureModel):
                 page_image = numpy.asarray(page.get_image(scale=self.scale))
 
                 for table_cluster, tbl_box in in_tables:
+                    print("tbl_box",tbl_box)
                     # Crop table region
                     x1, y1, x2, y2 = [int(v) for v in tbl_box]
                     table_image = page_image[y1:y2, x1:x2]
@@ -416,12 +425,13 @@ class TableStructureModelV2(BaseTableStructureModel):
                             image_tensor, self.tokenizer, max_length=512
                         )
 
-                    # Decode tokens to OTSL sequence
+                    # Decode tokens to OTSL sequence (Optimised table-structure language)
                     generated_ids = output["generated_ids"][0]
                     otsl_seq = self._decode_otsl_sequence(generated_ids)
 
                     # Get bboxes
                     pred_bboxes = output["predicted_bboxes"]
+                    print("pred_bboxes", pred_bboxes)
                     if pred_bboxes is not None:
                         pred_bboxes = pred_bboxes[0]
                         valid_mask = pred_bboxes.sum(dim=-1) > 0
@@ -464,7 +474,7 @@ class TableStructureModelV2(BaseTableStructureModel):
                         cluster=table_cluster,
                         label=table_cluster.label,
                     )
-
+                    print("tbl", str(tbl)[:4000])
                     table_prediction.table_map[table_cluster.id] = tbl
 
                 if settings.debug.visualize_tables:

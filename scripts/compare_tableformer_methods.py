@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from typing import cast
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import (
+    PdfPipelineOptions,
+    TableStructureOptions,
+    TableStructureV2Options,
+)
+from docling.datamodel.settings import settings
+from docling.document_converter import DocumentConverter, PdfFormatOption
+
+
+DEFAULT_INPUT = "https://arxiv.org/pdf/2206.01062"
+DEFAULT_OUTPUT_DIR = REPO_ROOT / "scratch" / "tableformer_compare"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run Docling with TableFormer V1 and V2 on the same PDF for comparison."
+    )
+    parser.add_argument(
+        "input_source",
+        nargs="?",
+        default=DEFAULT_INPUT,
+        help="PDF path or URL to convert.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_OUTPUT_DIR,
+        help="Directory where comparison outputs will be written.",
+    )
+    return parser.parse_args()
+
+
+def run_conversion(
+    input_source: str,
+    output_dir: Path,
+    label: str,
+    table_structure_options: TableStructureOptions | TableStructureV2Options,
+) -> Path:
+    debug_dir = output_dir / label / "debug"
+    markdown_path = output_dir / label / "document.md"
+
+    debug_dir.mkdir(parents=True, exist_ok=True)
+
+    settings.debug.visualize_tables = True
+    settings.debug.debug_output_path = str(debug_dir)
+
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_table_structure = True
+    pipeline_options.table_structure_options = cast(object, table_structure_options)
+    pipeline_options.do_ocr = True
+
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
+
+    result = converter.convert(input_source)
+    markdown_path.write_text(result.document.export_to_markdown(), encoding="utf-8")
+
+    print(f"[{label}] Saved markdown to: {markdown_path}")
+    print(f"[{label}] Saved table debug images under: {debug_dir}")
+    print(f"[{label}] Markdown tail:\n{result.document.export_to_markdown()[-1000:]}")
+
+    return markdown_path
+
+
+def main() -> None:
+    args = parse_args()
+    output_dir = args.output_dir.resolve()
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    v1_markdown = run_conversion(
+        input_source=args.input_source,
+        output_dir=output_dir,
+        label="v1",
+        table_structure_options=TableStructureOptions(),
+    )
+    v2_markdown = run_conversion(
+        input_source=args.input_source,
+        output_dir=output_dir,
+        label="v2",
+        table_structure_options=TableStructureV2Options(),
+    )
+
+    print("\nComparison outputs:")
+    print(f"- V1 markdown: {v1_markdown}")
+    print(f"- V2 markdown: {v2_markdown}")
+    print(f"- Root output directory: {output_dir}")
+
+
+if __name__ == "__main__":
+    main()
