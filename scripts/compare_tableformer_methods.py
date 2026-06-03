@@ -62,16 +62,23 @@ def detect_input_format(input_source: str) -> InputFormat:
     )
 
 
+def get_input_name(input_source: str) -> str:
+    parsed = urlparse(input_source)
+    source_path = Path(parsed.path if parsed.scheme else input_source)
+    return source_path.stem or "comparison"
+
+
 def run_conversion(
     input_source: str,
-    output_dir: Path,
+    case_output_dir: Path,
     label: str,
     table_structure_options: TableStructureOptions | TableStructureV2Options,
 ) -> Path:
-    debug_dir = output_dir / label / "debug"
-    markdown_path = output_dir / label / "document.md"
+    debug_dir = case_output_dir / "DEBUG"
+    markdown_path = case_output_dir / "MD" / f"md_{label}.md"
 
     debug_dir.mkdir(parents=True, exist_ok=True)
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
 
     settings.debug.visualize_tables = True
     settings.debug.debug_output_path = str(debug_dir)
@@ -105,18 +112,19 @@ def run_conversion(
 def main() -> None:
     args = parse_args()
     output_dir = args.output_dir.resolve()
+    case_output_dir = output_dir / get_input_name(args.input_source)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
+    case_output_dir.mkdir(parents=True, exist_ok=True)
 
     v1_markdown = run_conversion(
         input_source=args.input_source,
-        output_dir=output_dir,
+        case_output_dir=case_output_dir,
         label="v1",
         table_structure_options=TableStructureOptions(),
     )
     v2_markdown = run_conversion(
         input_source=args.input_source,
-        output_dir=output_dir,
+        case_output_dir=case_output_dir,
         label="v2",
         table_structure_options=TableStructureV2Options(),
     )
@@ -124,7 +132,7 @@ def main() -> None:
     print("\nComparison outputs:")
     print(f"- V1 markdown: {v1_markdown}")
     print(f"- V2 markdown: {v2_markdown}")
-    print(f"- Root output directory: {output_dir}")
+    print(f"- Case output directory: {case_output_dir}")
 
 
 if __name__ == "__main__":
