@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 from typing import cast
 
@@ -17,7 +18,11 @@ from docling.datamodel.pipeline_options import (
     TableStructureV2Options,
 )
 from docling.datamodel.settings import settings
-from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling.document_converter import (
+    DocumentConverter,
+    ImageFormatOption,
+    PdfFormatOption,
+)
 
 
 DEFAULT_INPUT = "https://arxiv.org/pdf/2206.01062"
@@ -26,13 +31,13 @@ DEFAULT_OUTPUT_DIR = REPO_ROOT / "scratch" / "tableformer_compare"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run Docling with TableFormer V1 and V2 on the same PDF for comparison."
+        description="Run Docling with TableFormer V1 and V2 on the same PDF or image for comparison."
     )
     parser.add_argument(
         "input_source",
         nargs="?",
         default=DEFAULT_INPUT,
-        help="PDF path or URL to convert.",
+        help="PDF or image path/URL to convert.",
     )
     parser.add_argument(
         "--output-dir",
@@ -41,6 +46,20 @@ def parse_args() -> argparse.Namespace:
         help="Directory where comparison outputs will be written.",
     )
     return parser.parse_args()
+
+
+def detect_input_format(input_source: str) -> InputFormat:
+    parsed = urlparse(input_source)
+    suffix = Path(parsed.path if parsed.scheme else input_source).suffix.lower()
+
+    if suffix == ".pdf":
+        return InputFormat.PDF
+    if suffix in {".png", ".jpg", ".jpeg"}:
+        return InputFormat.IMAGE
+
+    raise ValueError(
+        "Unsupported input type. Expected a .pdf, .png, .jpg, or .jpeg file."
+    )
 
 
 def run_conversion(
@@ -62,10 +81,15 @@ def run_conversion(
     pipeline_options.table_structure_options = cast(object, table_structure_options)
     pipeline_options.do_ocr = True
 
+    input_format = detect_input_format(input_source)
+    format_option = (
+        PdfFormatOption(pipeline_options=pipeline_options)
+        if input_format == InputFormat.PDF
+        else ImageFormatOption(pipeline_options=pipeline_options)
+    )
+
     converter = DocumentConverter(
-        format_options={
-            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-        }
+        format_options={input_format: format_option}
     )
 
     result = converter.convert(input_source)
